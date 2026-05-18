@@ -95,6 +95,7 @@ class Variable(ASTNode):
 
 
 DATA_TYPES = ("int", "float", "char", "double", "void")
+STATEMENT_START_KEYWORDS = DATA_TYPES + ("print", "if", "while", "return")
 
 
 class Parser:
@@ -102,6 +103,7 @@ class Parser:
         self.tokens = tokens
         self.position = 0
         self.current_token = tokens[0]
+        self.syntax_errors = []
 
     def error(self, msg):
         raise SyntaxErrorCustom(
@@ -110,6 +112,58 @@ class Parser:
             self.current_token.column,
             self.current_token.position,
         )
+
+    def format_error(self, error):
+        return str(error)
+
+    def add_error(self, error):
+        message = self.format_error(error)
+        if message not in self.syntax_errors:
+            self.syntax_errors.append(message)
+
+    def advance(self):
+        if self.current_token.type != "EOF":
+            self.position += 1
+            self.current_token = self.tokens[self.position]
+
+    def synchronize(self):
+        """
+        Error recovery:
+        After a syntax error, skip tokens until a safer point is found.
+        This lets the parser continue and discover more errors instead of stopping.
+        """
+        if self.current_token.type == "EOF":
+            return
+
+        # If the bad statement reached a semicolon, consume it and continue.
+        if self.current_token.type == "SPECIAL_CHARACTERS" and self.current_token.value == ";":
+            self.advance()
+            return
+
+        # If we are sitting on an unmatched closing brace, consume it at top-level
+        # recovery to avoid an infinite loop.
+        if self.current_token.type == "SPECIAL_CHARACTERS" and self.current_token.value == "}":
+            self.advance()
+            return
+
+        while self.current_token.type != "EOF":
+            if self.current_token.type == "SPECIAL_CHARACTERS" and self.current_token.value == ";":
+                self.advance()
+                return
+
+            if self.current_token.type == "SPECIAL_CHARACTERS" and self.current_token.value == "}":
+                return
+
+            if (
+                self.current_token.type == "KEYWORD"
+                and self.current_token.value in STATEMENT_START_KEYWORDS
+            ):
+                return
+
+            if self.current_token.type == "ID":
+                return
+
+            self.advance()
 
     def eat(self, token_type, value=None):
         if self.current_token.type != token_type:
@@ -130,14 +184,27 @@ class Parser:
                 f"'{self.current_token.value}'"
             )
 
-        self.position += 1
-        self.current_token = self.tokens[self.position]
+        self.advance()
 
     def parse(self):
         statements = []
 
         while self.current_token.type != "EOF":
-            statements.append(self.statement())
+            try:
+                statements.append(self.statement())
+            except SyntaxErrorCustom as error:
+                self.add_error(error)
+                self.synchronize()
+
+        if self.syntax_errors:
+            total = len(self.syntax_errors)
+            joined = "\n".join(
+                f"{index}. {message}"
+                for index, message in enumerate(self.syntax_errors, start=1)
+            )
+            raise SyntaxErrorCustom(
+                f"{total} syntax error(s) found:\n{joined}"
+            )
 
         return Program(statements)
 
@@ -180,9 +247,27 @@ class Parser:
             and self.current_token.value == "}"
         ):
             if self.current_token.type == "EOF":
-                self.error("Syntax Error: Missing closing brace '}' before end of file")
+                self.add_error(
+                    SyntaxErrorCustom(
+                        "Syntax Error: Missing closing brace '}' before end of file",
+                        self.current_token.line,
+                        self.current_token.column,
+                        self.current_token.position,
+                    )
+                )
+                return Block(statements)
 
-            statements.append(self.statement())
+            try:
+                statements.append(self.statement())
+            except SyntaxErrorCustom as error:
+                self.add_error(error)
+                # Inside a block, do not consume the closing brace during recovery.
+                if (
+                    self.current_token.type == "SPECIAL_CHARACTERS"
+                    and self.current_token.value == "}"
+                ):
+                    break
+                self.synchronize()
 
         self.eat("SPECIAL_CHARACTERS", "}")
         return Block(statements)
@@ -279,11 +364,22 @@ class Parser:
 
         self.eat("SPECIAL_CHARACTERS", ")")
 
+        if not (
+            self.current_token.type == "SPECIAL_CHARACTERS"
+            and self.current_token.value == "{"
+        ):
+            self.error("Syntax Error: Expected '{' to start if block")
+
         ifblk = self.block()
         elseblk = None
 
         if self.current_token.type == "KEYWORD" and self.current_token.value == "else":
             self.eat("KEYWORD", "else")
+            if not (
+                self.current_token.type == "SPECIAL_CHARACTERS"
+                and self.current_token.value == "{"
+            ):
+                self.error("Syntax Error: Expected '{' to start else block")
             elseblk = self.block()
 
         return IfStatement(cond, ifblk, elseblk)
@@ -308,6 +404,12 @@ class Parser:
             self.error("Syntax Error: Missing ')' after while condition")
 
         self.eat("SPECIAL_CHARACTERS", ")")
+
+        if not (
+            self.current_token.type == "SPECIAL_CHARACTERS"
+            and self.current_token.value == "{"
+        ):
+            self.error("Syntax Error: Expected '{' to start while block")
 
         return WhileStatement(cond, self.block())
 
@@ -439,6 +541,4 @@ class Parser:
             self.eat("SPECIAL_CHARACTERS", ")")
             return node
 
-        self.error(
-            f"Syntax Error: Invalid expression near '{tok.value}'"
-        )
+        self.error(f"Syntax Error: Invalid expression near '{tok.value}'")
