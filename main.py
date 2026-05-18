@@ -18,7 +18,11 @@ def compile_source(source_code, generate_ast_image=False):
         output.append("\nDetailed Token Table:")
         output.append(display_tokens_detailed(tokens))
     except LexicalError as error:
-        output += ["Status: FAILED", "Error Type: Lexical Error", f"Message: {error}"]
+        output += [
+            "Status: FAILED",
+            "Error Type: Lexical Error",
+            f"Message: {error}",
+        ]
         return "\n".join(output)
 
     try:
@@ -30,6 +34,7 @@ def compile_source(source_code, generate_ast_image=False):
             "Message: Syntax analysis completed successfully.",
             "AST generated successfully.",
         ]
+
         if generate_ast_image:
             try:
                 from ast_visualizer import plot_ast
@@ -38,8 +43,15 @@ def compile_source(source_code, generate_ast_image=False):
             except Exception as image_error:
                 output.append("Warning: AST image was not generated.")
                 output.append(f"Reason: {image_error}")
+
     except SyntaxErrorCustom as error:
-        output += ["Status: FAILED", "Error Type: Syntax Error", f"Message: {error}"]
+        output += [
+            "Status: FAILED",
+            "Error Type: Syntax Error",
+            "Message:",
+            str(error),
+            "\nCompilation stopped after syntax analysis because syntax errors must be fixed before semantic analysis can run correctly.",
+        ]
         return "\n".join(output)
 
     try:
@@ -53,16 +65,22 @@ def compile_source(source_code, generate_ast_image=False):
             analyzer.format_symbol_table(),
         ]
     except SemanticError as error:
-        output += ["Status: FAILED", "Error Type: Semantic Error", f"Message: {error}"]
+        output += [
+            "Status: FAILED",
+            "Error Type: Semantic Error",
+            f"Message: {error}",
+        ]
         return "\n".join(output)
 
     output.append("\nFRONTEND COMPILATION COMPLETED SUCCESSFULLY.")
     return "\n".join(output)
 
+
 if __name__ == "__main__":
     print("Enter source code for the Expanded Mini C-like Language.")
     print("Press ENTER on an empty line to compile.")
     print("-" * 70)
+
     lines = []
     while True:
         line = input()
