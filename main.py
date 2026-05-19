@@ -29,6 +29,7 @@ def compile_source(source_code, generate_ast_image=False):
         output.append("\n2. SYNTAX ANALYSIS")
         parser = Parser(tokens)
         compiler_ast = parser.parse()
+
         output += [
             "Status: PASSED",
             "Message: Syntax analysis completed successfully.",
@@ -48,22 +49,39 @@ def compile_source(source_code, generate_ast_image=False):
         output += [
             "Status: FAILED",
             "Error Type: Syntax Error",
-            "Message:",
-            str(error),
-            "\nCompilation stopped after syntax analysis because syntax errors must be fixed before semantic analysis can run correctly.",
+            f"Message: {error}",
         ]
         return "\n".join(output)
 
     try:
         output.append("\n3. SEMANTIC ANALYSIS")
         analyzer = SemanticAnalyzer()
-        analyzer.analyze(compiler_ast)
+        semantic_ok = analyzer.run(compiler_ast)
+
+        if semantic_ok:
+            output += [
+                "Status: PASSED",
+                "Message: Semantic analysis completed successfully.",
+            ]
+        else:
+            output += [
+                "Status: FAILED",
+                "Error Type: Semantic Error(s)",
+                analyzer.format_errors(),
+            ]
+
+        if analyzer.warnings:
+            output.append("\nSemantic Warning(s):")
+            output.append(analyzer.format_warnings())
+
         output += [
-            "Status: PASSED",
-            "Message: Semantic analysis completed successfully.",
-            "Symbol Table:",
+            "\nSymbol Table:",
             analyzer.format_symbol_table(),
         ]
+
+        if not semantic_ok:
+            return "\n".join(output)
+
     except SemanticError as error:
         output += [
             "Status: FAILED",
