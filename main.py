@@ -1,12 +1,13 @@
 from lexer import lexer, display_tokens_grouped, display_tokens_detailed, LexicalError
 from parser import Parser, SyntaxErrorCustom
 from semantic_analyzer import SemanticAnalyzer, SemanticError
+from intermediate_code_generator import IntermediateCodeGenerator
 
 
 def compile_source(source_code, generate_ast_image=False):
     output = []
     output.append("SOURCE LANGUAGE: Expanded Mini C-like Language")
-    output.append("FRONTEND OUTPUT: Tokens, Abstract Syntax Tree, and Symbol Table")
+    output.append("FRONTEND OUTPUT: Tokens, Abstract Syntax Tree, Symbol Table, and Intermediate Code")
     output.append("=" * 70)
 
     try:
@@ -48,7 +49,7 @@ def compile_source(source_code, generate_ast_image=False):
     except SyntaxErrorCustom as error:
         output += [
             "Status: FAILED",
-            "Error Type: Syntax Error",
+            "Error Type: Syntax Error(s)",
             f"Message: {error}",
         ]
         return "\n".join(output)
@@ -86,6 +87,24 @@ def compile_source(source_code, generate_ast_image=False):
         output += [
             "Status: FAILED",
             "Error Type: Semantic Error",
+            f"Message: {error}",
+        ]
+        return "\n".join(output)
+
+    try:
+        output.append("\n4. INTERMEDIATE CODE GENERATION")
+        generator = IntermediateCodeGenerator()
+        generator.generate(compiler_ast)
+        output += [
+            "Status: PASSED",
+            "Message: Intermediate code generated successfully.",
+            "\nThree-Address Code:",
+            generator.format_code(),
+        ]
+    except Exception as error:
+        output += [
+            "Status: FAILED",
+            "Error Type: Intermediate Code Generation Error",
             f"Message: {error}",
         ]
         return "\n".join(output)
